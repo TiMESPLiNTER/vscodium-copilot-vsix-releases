@@ -62,13 +62,12 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Checkout microsoft/vscode at ${{ matrix.version.tag }} (${{ matrix.version.commit }})
+      - name: Checkout microsoft/vscode at ${{ matrix.version.commit }} (${{ matrix.version.tag }})
         run: |
-          git clone --depth 1 --branch ${{ matrix.version.tag }} https://github.com/microsoft/vscode.git
-          actual=$(git -C vscode rev-parse HEAD)
-          if [[ "$actual" != "${{ matrix.version.commit }}" ]]; then
-            echo "::warning::Expected commit ${{ matrix.version.commit }} but tag resolved to $actual"
-          fi
+          git init vscode
+          git -C vscode remote add origin https://github.com/microsoft/vscode.git
+          git -C vscode fetch --depth 1 origin ${{ matrix.version.commit }}
+          git -C vscode checkout FETCH_HEAD
 
       - name: Check extensions/copilot exists
         id: check
