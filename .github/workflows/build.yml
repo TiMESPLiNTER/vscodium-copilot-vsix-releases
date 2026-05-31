@@ -43,7 +43,7 @@ jobs:
           existing=$(gh api "repos/${{ github.repository }}/releases" --paginate \
             --jq '[.[].tag_name | ltrimstr("v")]' 2>/dev/null || echo '[]')
 
-          new=$(jq -n --argjson vs "$versions" --argjson ex "$existing" \
+          new=$(jq -cn --argjson vs "$versions" --argjson ex "$existing" \
             '[ $vs[] | select(.tag as $t | ($ex | index($t)) | not) ]')
 
           echo "Versions to build: $(echo "$new" | jq -r '[.[].tag] | join(", ")')"
@@ -71,19 +71,33 @@ jobs:
             echo "::warning::Expected commit ${{ matrix.version.commit }} but tag resolved to $actual"
           fi
 
+      - name: Check extensions/copilot exists
+        id: check
+        run: |
+          if [[ -d vscode/extensions/copilot ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::extensions/copilot not found in VS Code ${{ matrix.version.tag }}, skipping."
+          fi
+
       - name: Install dependencies
+        if: steps.check.outputs.exists == 'true'
         working-directory: vscode/extensions/copilot
         run: npm install
 
       - name: Build
+        if: steps.check.outputs.exists == 'true'
         working-directory: vscode/extensions/copilot
         run: npm run build
 
       - name: Package VSIX
+        if: steps.check.outputs.exists == 'true'
         working-directory: vscode/extensions/copilot
         run: npx @vscode/vsce package --no-dependencies
 
       - name: Read extension metadata
+        if: steps.check.outputs.exists == 'true'
         id: meta
         working-directory: vscode/extensions/copilot
         run: |
@@ -92,6 +106,7 @@ jobs:
           echo "vsix=copilot-chat-${ext_ver}.vsix" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
+        if: steps.check.outputs.exists == 'true'
         working-directory: vscode/extensions/copilot
         env:
           GH_TOKEN: ${{ github.token }}
