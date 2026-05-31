@@ -56,7 +56,6 @@ jobs:
     strategy:
       matrix:
         version: ${{ fromJson(needs.detect.outputs.versions) }}
-      max-parallel: 1
       fail-fast: false
     steps:
       - uses: actions/setup-node@v4
@@ -89,6 +88,9 @@ jobs:
       - name: Build
         if: steps.check.outputs.exists == 'true'
         working-directory: vscode/extensions/copilot
+        env:
+          BUILD_SOURCEVERSION: ${{ matrix.version.commit }}
+          VSCODE_QUALITY: stable
         run: npm run build
 
       - name: Package VSIX
@@ -111,7 +113,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cat > notes.md << 'NOTES'
+          Built from [microsoft/vscode@`${{ matrix.version.commit }}`](https://github.com/microsoft/vscode/commit/${{ matrix.version.commit }}) (VS Code ${{ matrix.version.tag }}).
+
+          ## Install in VSCodium
+
+          Download `${{ steps.meta.outputs.vsix }}` from the assets below and run:
+
+          ```bash
+          codium --install-extension ${{ steps.meta.outputs.vsix }}
+          ```
+
+          > **Note:** Requires a [GitHub Copilot subscription](https://github.com/features/copilot).
+          NOTES
+
           gh release create "v${{ matrix.version.tag }}" \
             --repo "${{ github.repository }}" \
             --title "Copilot Chat ${{ steps.meta.outputs.ext_version }} (VS Code ${{ matrix.version.tag }})" \
-            --notes "Built from [microsoft/vscode@\`${{ matrix.version.commit }}\`](https://github.com/microsoft/vscode/commit/${{ matrix.version.commit }}) (VS Code ${{ matrix.version.tag }}).
+            --notes-file notes.md \
+            "${{ steps.meta.outputs.vsix }}"
