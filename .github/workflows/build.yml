@@ -14,26 +14,39 @@ jobs:
     outputs:
       versions: ${{ steps.detect.outputs.versions }}
     steps:
-      - name: Detect new VS Code versions
+      - name: Detect unreleased VSCodium versions
         id: detect
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Fetch the 20 most recent VS Code releases
-          vscode_versions=$(gh api "repos/microsoft/vscode/releases?per_page=20" \
-            --jq '[.[].tag_name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))]')
+          # Walk the git history of upstream/stable.json in the VSCodium repo.
+          # Each commit that touched it represents a VSCodium release, giving us
+          # both the VS Code tag and the exact commit hash VSCodium built from.
+          shas=$(gh api "repos/VSCodium/vscodium/commits?path=upstream/stable.json&per_page=20" \
+            --jq '.[].sha')
 
-          # Fetch tags of existing releases in this repo (strip leading "v")
+          versions='[]'
+          declare -A seen
+          while IFS= read -r sha; do
+            entry=$(curl -sf "https://raw.githubusercontent.com/VSCodium/vscodium/${sha}/upstream/stable.json") || continue
+            tag=$(echo "$entry" | jq -r '.tag // empty')
+            commit=$(echo "$entry" | jq -r '.commit // empty')
+            if [[ -n "$tag" && -z "${seen[$tag]}" ]]; then
+              seen[$tag]=1
+              versions=$(jq -n --argjson vs "$versions" --arg t "$tag" --arg c "$commit" \
+                '$vs + [{"tag": $t, "commit": $c}]')
+            fi
+          done <<< "$shas"
+
+          # Find which of those we haven't released yet
           existing=$(gh api "repos/${{ github.repository }}/releases" --paginate \
-            --jq '[.[].tag_name | ltrimstr("v")]' 2>/dev/null || echo "[]")
+            --jq '[.[].tag_name | ltrimstr("v")]' 2>/dev/null || echo '[]')
 
-          # Compute set difference: versions in vscode but not yet released here
-          new=$(jq -n \
-            --argjson vs "$vscode_versions" \
-            --argjson ex "$existing" \
-            '$vs - $ex')
+          new=$(jq -n --argjson vs "$versions" --argjson ex "$existing" \
+            '[ $vs[] | select(.tag as $t | ($ex | index($t)) | not) ]')
 
-          echo "Found new versions: $new"
+          echo "Versions to build: $(echo "$new" | jq -r '[.[].tag] | join(", ")')"
           echo "versions=$new" >> "$GITHUB_OUTPUT"
 
   build:
@@ -50,8 +63,13 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Clone microsoft/vscode at ${{ matrix.version }}
-        run: git clone --depth 1 --branch ${{ matrix.version }} https://github.com/microsoft/vscode.git
+      - name: Checkout microsoft/vscode at ${{ matrix.version.tag }} (${{ matrix.version.commit }})
+        run: |
+          git clone --depth 1 --branch ${{ matrix.version.tag }} https://github.com/microsoft/vscode.git
+          actual=$(git -C vscode rev-parse HEAD)
+          if [[ "$actual" != "${{ matrix.version.commit }}" ]]; then
+            echo "::warning::Expected commit ${{ matrix.version.commit }} but tag resolved to $actual"
+          fi
 
       - name: Install dependencies
         working-directory: vscode/extensions/copilot
@@ -78,10 +96,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ matrix.version }}" \
+          gh release create "v${{ matrix.version.tag }}" \
             --repo "${{ github.repository }}" \
-            --title "Copilot Chat ${{ steps.meta.outputs.ext_version }} (VS Code ${{ matrix.version }})" \
-            --notes "Built from [microsoft/vscode@${{ matrix.version }}](https://github.com/microsoft/vscode/releases/tag/${{ matrix.version }}).
+            --title "Copilot Chat ${{ steps.meta.outputs.ext_version }} (VS Code ${{ matrix.version.tag }})" \
+            --notes "Built from [microsoft/vscode@\`${{ matrix.version.commit }}\`](https://github.com/microsoft/vscode/commit/${{ matrix.version.commit }}) (VS Code ${{ matrix.version.tag }}).
 
 ## Install in VSCodium
 
