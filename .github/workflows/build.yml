@@ -20,31 +20,43 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Versions we have already published
+          existing=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+            --jq '[.[].tag_name | ltrimstr("v")]' 2>/dev/null || echo '[]')
+
           # Walk the git history of upstream/stable.json in the VSCodium repo.
           # Each commit that touched it represents a VSCodium release, giving us
           # both the VS Code tag and the exact commit hash VSCodium built from.
           shas=$(gh api "repos/VSCodium/vscodium/commits?path=upstream/stable.json&per_page=20" \
             --jq '.[].sha')
 
-          versions='[]'
+          new='[]'
           declare -A seen
           while IFS= read -r sha; do
             entry=$(curl -sf "https://raw.githubusercontent.com/VSCodium/vscodium/${sha}/upstream/stable.json") || continue
             tag=$(echo "$entry" | jq -r '.tag // empty')
             commit=$(echo "$entry" | jq -r '.commit // empty')
-            if [[ -n "$tag" && -z "${seen[$tag]}" ]]; then
-              seen[$tag]=1
-              versions=$(jq -n --argjson vs "$versions" --arg t "$tag" --arg c "$commit" \
-                '$vs + [{"tag": $t, "commit": $c}]')
+
+            if [[ -z "$tag" || -n "${seen[$tag]}" ]]; then
+              continue
             fi
+            seen[$tag]=1
+
+            # Commits come back newest-first, so the first already-released tag
+            # marks the point where everything older has been handled before.
+            if jq -e --arg t "$tag" 'index($t)' <<< "$existing" > /dev/null; then
+              break
+            fi
+
+            new=$(jq -cn --argjson vs "$new" --arg t "$tag" --arg c "$commit" \
+              '$vs + [{"tag": $t, "commit": $c}]')
           done <<< "$shas"
 
-          # Find which of those we haven't released yet
-          existing=$(gh api "repos/${{ github.repository }}/releases" --paginate \
-            --jq '[.[].tag_name | ltrimstr("v")]' 2>/dev/null || echo '[]')
-
-          new=$(jq -cn --argjson vs "$versions" --argjson ex "$existing" \
-            '[ $vs[] | select(.tag as $t | ($ex | index($t)) | not) ]')
+          # On a repo without any release yet there is no cut-off point, so only
+          # process the most recent version instead of the whole history.
+          if [[ "$existing" == '[]' ]]; then
+            new=$(jq -c '.[0:1]' <<< "$new")
+          fi
 
           echo "Versions to build: $(echo "$new" | jq -r '[.[].tag] | join(", ")')"
           echo "versions=$new" >> "$GITHUB_OUTPUT"
