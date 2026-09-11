@@ -70,9 +70,9 @@ jobs:
         version: ${{ fromJson(needs.detect.outputs.versions) }}
       fail-fast: false
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: 'lts/*'
 
       - name: Checkout microsoft/vscode at ${{ matrix.version.commit }} (${{ matrix.version.tag }})
         run: |
