@@ -95,7 +95,11 @@ jobs:
       - name: Package VSIX
         if: steps.check.outputs.exists == 'true'
         working-directory: vscode/extensions/copilot
-        run: npx @vscode/vsce package --no-dependencies
+        # --allow-package-secrets sendgrid: the bundled extension.js contains
+        # TypeScript type references like "SG.OutputMode.OpenAI" whose "SG."
+        # prefix is a false positive for Sendgrid API keys. They are not real
+        # secrets, so we allow just this one secret type.
+        run: npx @vscode/vsce package --no-dependencies --allow-package-secrets sendgrid
 
       - name: Read extension metadata
         if: steps.check.outputs.exists == 'true'
