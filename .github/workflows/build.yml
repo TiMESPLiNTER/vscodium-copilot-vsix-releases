@@ -70,7 +70,9 @@ jobs:
         version: ${{ fromJson(needs.detect.outputs.versions) }}
       fail-fast: false
     steps:
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 'lts/*'
 
@@ -89,6 +91,21 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "::notice::extensions/copilot not found in VS Code ${{ matrix.version.tag }}, skipping."
+          fi
+
+      - name: Apply patches
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          if [ -d "patches" ]; then
+            shopt -s nullglob
+            for patch in "$PWD/patches"/*.patch; do
+              [ -e "$patch" ] || continue
+              echo "Applying patch: $patch"
+              git -C vscode apply --whitespace=fix "$patch"
+            done
+            shopt -u nullglob
+          else
+            echo "No patches directory found, skipping."
           fi
 
       - name: Install dependencies

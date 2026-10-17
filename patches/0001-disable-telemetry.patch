@@ -1,0 +1,36 @@
+diff --git a/extensions/copilot/src/extension/extension/vscode-node/services.ts b/extensions/copilot/src/extension/extension/vscode-node/services.ts
+index a06d7287..225c3cfc 100644
+--- a/extensions/copilot/src/extension/extension/vscode-node/services.ts
++++ b/extensions/copilot/src/extension/extension/vscode-node/services.ts
+@@ -317,29 +317,12 @@ export function registerServices(builder: IInstantiationServiceBuilder, extensio
+ }
+ 
+ function setupMSFTExperimentationService(builder: IInstantiationServiceBuilder, extensionContext: ExtensionContext) {
+-	const experimentsEnabled = workspace.getConfiguration('workbench').get<boolean>('enableExperiments', true);
+-	if (ExtensionMode.Production === extensionContext.extensionMode && !isScenarioAutomation && experimentsEnabled) {
+-		// Intitiate the experimentation service
+-		builder.define(IExperimentationService, new SyncDescriptor(MicrosoftExperimentationService));
+-	} else {
+-		builder.define(IExperimentationService, new NullExperimentationService());
+-	}
++	builder.define(IExperimentationService, new NullExperimentationService());
+ }
+ 
+ function setupTelemetry(builder: IInstantiationServiceBuilder, extensionContext: ExtensionContext, internalAIKey: string, externalAIKey: string) {
+ 
+-	if (ExtensionMode.Production === extensionContext.extensionMode && !isScenarioAutomation) {
+-		builder.define(ITelemetryService, new SyncDescriptor(TelemetryService, [
+-			extensionContext.extension.packageJSON.name,
+-			internalAIKey,
+-			externalAIKey,
+-			APP_INSIGHTS_KEY_STANDARD,
+-			APP_INSIGHTS_KEY_ENHANCED,
+-		]));
+-	} else {
+-		// If we're developing or testing we don't want telemetry to be sent, so we turn it off
+-		builder.define(ITelemetryService, new NullTelemetryService());
+-	}
++	builder.define(ITelemetryService, new NullTelemetryService());
+ 
+ 	setupMSFTExperimentationService(builder, extensionContext);
+ }
